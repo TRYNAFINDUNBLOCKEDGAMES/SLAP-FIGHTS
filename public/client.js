@@ -1,6 +1,5 @@
 const socket = io();
 
-// Core Three.js Setup Variables
 let scene, camera, renderer;
 let localPlayerId;
 let playersData = {};
@@ -10,23 +9,19 @@ let bulletMeshes = {};
 let matchState = "LOBBY";
 let handRegistry = {};
 
-// Camera Control Parameters
-let cameraAngleY = 0; // Rotates around character
-let cameraAngleX = 0.3; // Look down angle
+let cameraAngleY = 0; 
+let cameraAngleX = 0.3; 
 let cameraZoom = 12;
 const MIN_ZOOM = 4, MAX_ZOOM = 25;
 
-// Local Input Tracking
 let keys = { w: false, a: false, s: false, d: false, space: false, arrowleft: false, arrowright: false, arrowup: false, arrowdown: false };
 let isTyping = false;
 let diverTacticalMode = false;
 
-// Physics Baseline Constants
 let yVelocity = 0;
 const GRAVITY = -0.015;
 let isGrounded = true;
 
-// Initialize Game Window
 init3DWorld();
 animateLoop();
 setupNetworkEvents();
@@ -35,26 +30,68 @@ setupInputListeners();
 function init3DWorld() {
     const container = document.getElementById('canvas-container');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
+    scene.background = new THREE.Color(0x87ceeb); 
 
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
 
-    // Dynamic Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(20, 40, 20);
     scene.add(dirLight);
 
-    // Build the Arena Island Floor (Radius 50)
     const islandGeo = new THREE.CylinderGeometry(50, 48, 4, 32);
-    const islandMat = new THREE.MeshStandardMaterial({ color: 0x3a5f3a, roughness: 0.8 });
+    const islandMat = new THREE.MeshStandardMaterial({ color: 0x22aa22, roughness: 0.8 }); 
     const island = new THREE.Mesh(islandGeo, islandMat);
-    island.position.y = -2; // Push down slightly so top surface sits at Y = 0
+    island.position.set(0, -2, 0); 
     scene.add(island);
+
+    const lobbyGroup = new THREE.Group();
+    lobbyGroup.position.set(0, 15, -80); 
+
+    const floorGeo = new THREE.BoxGeometry(30, 0.2, 20);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    lobbyGroup.add(floor);
+
+    const carpetGeo = new THREE.BoxGeometry(8, 0.05, 20);
+    const carpetMat = new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.9 }); 
+    const carpet = new THREE.Mesh(carpetGeo, carpetMat);
+    carpet.position.set(0, 0.1, 0); 
+    lobbyGroup.add(carpet);
+
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 8, 0.5), wallMat);
+    backWall.position.set(0, 4, -10);
+    lobbyGroup.add(backWall);
+
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 20), wallMat);
+    leftWall.position.set(-15, 4, 0);
+    lobbyGroup.add(leftWall);
+
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 20), wallMat);
+    rightWall.position.set(15, 4, 0);
+    lobbyGroup.add(rightWall);
+
+    const pillarGeo = new THREE.BoxGeometry(2, 8, 0.5);
+    for (let i = -14; i <= 14; i += 7) {
+        const pillar = new THREE.Mesh(pillarGeo, wallMat);
+        pillar.position.set(i, 4, 10);
+        lobbyGroup.add(pillar);
+    }
+    const glassGeo = new THREE.BoxGeometry(5, 6, 0.1);
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x66ccff, transparent: true, opacity: 0.3, roughness: 0.1 });
+    for (let i = -10.5; i <= 10.5; i += 7) {
+        const windowPane = new THREE.Mesh(glassGeo, glassMat);
+        windowPane.position.set(i, 4, 10);
+        lobbyGroup.add(windowPane);
+    }
+
+    scene.add(lobbyGroup);
 
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -63,39 +100,50 @@ function init3DWorld() {
     });
 }
 
-// Custom Mesh Constructor Framework (Separates Body, Arm, and Glove cleanly)
 function createPlayerCharacterMesh(gloveName) {
     const group = new THREE.Group();
 
-    // 1. The Torso/Body
-    const bodyGeo = new THREE.CapsuleGeometry(0.6, 1.2, 4, 8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3366cc });
+    const bodyGeo = new THREE.CylinderGeometry(0.6, 0.6, 1.2, 8);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0066ff, roughness: 0.5 }); 
     const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.9;
+    body.position.y = 1.2;
     group.add(body);
 
-    // 2. The Shoulder Anchor Pivot (CRITICAL: Sets transformations to extend from shoulder socket)
-    const shoulderPivot = new THREE.Group();
-    shoulderPivot.position.set(0.8, 1.1, 0); // Position relative to torso right side
+    const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.5 }); 
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 2.1;
+    group.add(head);
+
+    const legGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.6, 8);
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x00aa00, roughness: 0.5 }); 
     
-    // The Arm Mesh itself
-    const armGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.5, 8);
-    armGeo.translate(0, -0.75, 0); // Shifts interior geometry so its top pivot rests on the shoulder origin point
-    const armMat = new THREE.MeshStandardMaterial({ color: 0x3366cc });
+    const leftLeg = new THREE.Mesh(legGeo, legMat);
+    leftLeg.position.set(-0.3, 0.3, 0);
+    group.add(leftLeg);
+
+    const rightLeg = new THREE.Mesh(legGeo, legMat);
+    rightLeg.position.set(0.3, 0.3, 0);
+    group.add(rightLeg);
+
+    const shoulderPivot = new THREE.Group();
+    shoulderPivot.position.set(0.8, 1.4, 0); 
+    
+    const armGeo = new THREE.CylinderGeometry(0.18, 0.18, 1.2, 8);
+    armGeo.translate(0, -0.6, 0); 
+    const armMat = new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.5 }); 
     const arm = new THREE.Mesh(armGeo, armMat);
-    arm.rotation.x = -Math.PI / 2; // Arm points forward straight ahead default
+    arm.rotation.x = -Math.PI / 2; 
     shoulderPivot.add(arm);
 
-    // 3. The Glove Mesh
     const gloveGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-    const gloveMat = new THREE.MeshStandardMaterial({ color: getGloveColorHex(gloveName) });
+    const gloveMat = new THREE.MeshStandardMaterial({ color: getGloveColorHex(gloveName), roughness: 0.2 });
     const glove = new THREE.Mesh(gloveGeo, gloveMat);
-    glove.position.set(0, -1.6, 0); // Positioned directly at the tip of the arm mesh
-    arm.add(glove); // Parented directly to arm so scaling shifts its depth perfectly
+    glove.position.set(0, -1.3, 0); 
+    arm.add(glove); 
 
     group.add(shoulderPivot);
     
-    // Save structural internal links inside the group wrapper object for easy animation reference updates
     group.userData = { arm: arm, glove: glove, shoulder: shoulderPivot };
     return group;
 }
@@ -105,39 +153,30 @@ function getGloveColorHex(name) {
     return colors[name] || 0xffffff;
 }
 
-// UI Updating Engine
 function updateHUD() {
     const lp = playersData[localPlayerId];
     if (lp) {
         document.getElementById('hud-glove-name').innerText = lp.equippedGlove;
         document.getElementById('hud-currency').innerText = lp.currency || 0;
-        
-        // Account authentication check mock layout toggles
-        if (lp.isAdmin) {
-            document.getElementById('admin-panel').style.display = 'block';
-        }
+        if (lp.isAdmin) document.getElementById('admin-panel').style.display = 'block';
     }
 }
 
-// Continuous Render Engine & Local Physics Tickers
 function animateLoop() {
     requestAnimationFrame(animateLoop);
-
     processLocalMovement();
     updateCameraPosition();
-
     renderer.render(scene, camera);
 }
 
 function processLocalMovement() {
     const lp = playersData[localPlayerId];
     const mesh = playerMeshes[localPlayerId];
-    if (!lp || !mesh || !lp.isAlive || isTyping || diverTacticalMode) return;
+    if (!lp || !mesh || isTyping || diverTacticalMode) return;
 
     let config = handRegistry[lp.equippedGlove] || { speedMultiplier: 1.0, jumpMultiplier: 1.0 };
     let baseSpeed = 0.15 * config.speedMultiplier;
 
-    // Movement Angle Vector Math aligned relative to Camera View Angles
     let forwardX = Math.sin(cameraAngleY);
     let forwardZ = Math.cos(cameraAngleY);
     let sideX = Math.sin(cameraAngleY + Math.PI / 2);
@@ -151,30 +190,38 @@ function processLocalMovement() {
     if (keys.a) { moveX += sideX; moveZ += sideZ; }
     if (keys.d) { moveX -= sideX; moveZ -= sideZ; }
 
-    // Normalize movement vectors
     if (moveX !== 0 || moveZ !== 0) {
         let length = Math.sqrt(moveX * moveX + moveZ * moveZ);
         mesh.position.x += (moveX / length) * baseSpeed;
         mesh.position.z += (moveZ / length) * baseSpeed;
-        
-        // Orient local mesh direction to match direction of walking vector angles
         mesh.rotation.y = Math.atan2(moveX, moveZ);
     }
 
-    // Local Jumping Physics & Basic Step-Up Climbs
     yVelocity += GRAVITY;
     mesh.position.y += yVelocity;
 
     isGrounded = false;
-    let groundHeight = 0;
+    let groundHeight = -999; 
 
-    // Raycast/Box checks against every active wall object for climbing mechanics
+    if (mesh.position.z >= -90 && mesh.position.z <= -70 && mesh.position.x >= -15 && mesh.position.x <= 15) {
+        groundHeight = 15; 
+        isGrounded = true;
+        
+        mesh.position.x = Math.max(-14.5, Math.min(14.5, mesh.position.x));
+        mesh.position.z = Math.max(-89.5, Math.min(-70.5, mesh.position.z));
+    } 
+    else if (Math.sqrt(mesh.position.x * mesh.position.x + mesh.position.z * mesh.position.z) <= 50 && mesh.position.y <= 0.5) {
+        if (lp.isAlive) {
+            groundHeight = 0;
+            isGrounded = true;
+        }
+    }
+
     Object.values(wallMeshes).forEach(wMesh => {
         let dx = Math.abs(mesh.position.x - wMesh.position.x);
         let dz = Math.abs(mesh.position.z - wMesh.position.z);
-        // Checking if standing layout matches bounding grid box dimensions
         if (dx < 2.2 && dz < 2.2) {
-            let topOfWall = wMesh.position.y + 4; // Walls are 4 units high
+            let topOfWall = wMesh.position.y + 4;
             if (mesh.position.y >= topOfWall - 0.5 && yVelocity <= 0) {
                 groundHeight = topOfWall;
                 isGrounded = true;
@@ -182,8 +229,7 @@ function processLocalMovement() {
         }
     });
 
-    // Check primary map island ground floor baseline
-    if (mesh.position.y <= groundHeight && Math.sqrt(mesh.position.x*mesh.position.x + mesh.position.z*mesh.position.z) <= 50) {
+    if (mesh.position.y <= groundHeight) {
         mesh.position.y = groundHeight;
         yVelocity = 0;
         isGrounded = true;
@@ -195,7 +241,6 @@ function processLocalMovement() {
         isGrounded = false;
     }
 
-    // Send high-speed position state data up streams to server pipelines
     socket.emit('player_movement', { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z, ry: mesh.rotation.y });
 }
 
@@ -203,16 +248,13 @@ function updateCameraPosition() {
     const mesh = playerMeshes[localPlayerId];
     if (!mesh) return;
 
-    // Option A Camera Sync Gate Control Logic: Diver Jump Sync Handler
     const lp = playersData[localPlayerId];
     if (diverTacticalMode || (lp && lp.isAlive && lp.equippedGlove === "Diver" && mesh.position.y > 25)) {
-        // Force immediate overhead flat birds-eye perspective viewport angles
         camera.position.set(mesh.position.x, mesh.position.y + 35, mesh.position.z);
         camera.lookAt(mesh.position.x, mesh.position.y, mesh.position.z);
         return;
     }
 
-    // Standard Third-Person Orbit Camera Controls
     if (!isTyping) {
         if (keys.arrowleft) cameraAngleY += 0.04;
         if (keys.arrowright) cameraAngleY -= 0.04;
@@ -228,7 +270,6 @@ function updateCameraPosition() {
     camera.lookAt(mesh.position.x, mesh.position.y + 1, mesh.position.z);
 }
 
-// Network Packets IO Event Streams
 function setupNetworkEvents() {
     socket.on('init', (data) => {
         localPlayerId = data.id;
@@ -236,7 +277,6 @@ function setupNetworkEvents() {
         matchState = data.matchState;
         handRegistry = data.hands;
 
-        // Populate baseline scene maps
         Object.keys(playersData).forEach(id => {
             const p = playersData[id];
             const m = createPlayerCharacterMesh(p.equippedGlove);
@@ -250,7 +290,7 @@ function setupNetworkEvents() {
     });
 
     socket.on('player_moved', (data) => {
-        if (data.id === localPlayerId) return; // Local prediction bypass updates
+        if (data.id === localPlayerId) return; 
         const m = playerMeshes[data.id];
         if (m) {
             m.position.set(data.x, data.y, data.z);
@@ -264,11 +304,10 @@ function setupNetworkEvents() {
         if (m && p) {
             let arm = m.userData.arm;
             let timeline = 0;
-            // Linear arm expansion scaling interpolation logic
             let animInterval = setInterval(() => {
                 timeline += 0.1;
                 if (timeline <= 0.5) {
-                    if (p.equippedGlove === "Extended") arm.scale.y = 1.0 + (timeline * 6); // Stretch arm length
+                    if (p.equippedGlove === "Extended") arm.scale.y = 1.0 + (timeline * 6); 
                     else arm.rotation.x = -Math.PI / 2 - (timeline * 2);
                 } else if (timeline <= 1.0) {
                     if (p.equippedGlove === "Extended") arm.scale.y = Math.max(1.0, 4.0 - ((timeline - 0.5) * 6));
@@ -284,7 +323,6 @@ function setupNetworkEvents() {
 
     socket.on('player_hit', (data) => {
         if (data.targetId === localPlayerId) {
-            // Apply impact velocity corrections
             yVelocity = data.chaotic ? Math.random() * 2.0 + 0.5 : 0.2;
             let speed = data.power * 0.05;
             let intervalCount = 0;
@@ -331,7 +369,7 @@ function setupNetworkEvents() {
         if (id === localPlayerId) diverTacticalMode = true;
         const m = playerMeshes[id];
         if (m) {
-            yVelocity = 0.8; // High launch scale velocity mechanics
+            yVelocity = 0.8; 
             isGrounded = false;
         }
     });
@@ -375,7 +413,7 @@ function spawnWallLocal(w) {
     const geo = new THREE.BoxGeometry(4, 4, 0.8);
     const mat = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.9 });
     const mainWall = new THREE.Mesh(geo, mat);
-    mainWall.position.y = 2; // Sits centered on bottom origin surface point
+    mainWall.position.y = 2; 
     group.add(mainWall);
 
     group.position.set(w.x, w.y, w.z);
@@ -384,12 +422,10 @@ function spawnWallLocal(w) {
     wallMeshes[w.id] = group;
 }
 
-// User Actions & Peripheral Hardware Listeners
 function setupInputListeners() {
     window.addEventListener('keydown', (e) => {
         let key = e.key.toLowerCase();
         
-        // Chat Box Toggling Gate Logic Handles Controls Lockout Instantly
         if (key === '/') {
             if (!isTyping) {
                 e.preventDefault();
@@ -421,7 +457,7 @@ function setupInputListeners() {
         if (key === 'x') cameraZoom = Math.min(MAX_ZOOM, cameraZoom + 1);
         if (key === 'q') socket.emit('trigger_slap');
         if (key === 'e') {
-            if (diverTacticalMode) return; // Requires cursor target clicks instead of key activations
+            if (diverTacticalMode) return; 
             socket.emit('trigger_ability');
         }
 
@@ -435,7 +471,6 @@ function setupInputListeners() {
         if (keys.hasOwnProperty(key)) keys[key] = false;
     });
 
-    // Raycast Interaction clicks targeting dive coordinate systems
     window.addEventListener('click', (e) => {
         if (!diverTacticalMode) return;
         
@@ -447,7 +482,6 @@ function setupInputListeners() {
         let raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(mouse, camera);
         
-        // Mock dynamic baseline targeting coordinates projection math vector alignments
         let targetPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
         let intersection = new THREE.Vector3();
         raycaster.ray.intersectPlane(targetPlane, intersection);
@@ -456,7 +490,6 @@ function setupInputListeners() {
     });
 }
 
-// Abstract Action Proxy Interceptor Placeholder (Future Expansion Hook for Admin Panels)
 function triggerAdminAction(type) {
-    console.log(`Frontend dispatching admin action payload: ${type}`);
+    console.log(`Admin panel dispatch: ${type}`);
 }
