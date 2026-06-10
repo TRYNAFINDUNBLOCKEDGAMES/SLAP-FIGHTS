@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slap Fights</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/shared/hands.js"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="hud-overlay">
+        <div id="chat-container" class="interactive">
+            <div id="chat-log"></div>
+            <input type="text" id="chat-input" maxlength="50" placeholder="Press Enter to send...">
+        </div>
+
+        <div id="account-hud">
+            <div>Glove: <span id="hud-glove-name">None</span></div>
+            <div>Slaps (Currency): <span id="hud-currency">0</span></div>
+        </div>
+
+        <div id="admin-panel" class="interactive">
+            <h3>🛡️ Developer Admin Panel</h3>
+            <button class="admin-btn" onclick="triggerAdminAction('voidAll')">Void All Players</button>
+            <button class="admin-btn" onclick="triggerAdminAction('giantMode')">Become Giant</button>
+            <button class="admin-btn" onclick="triggerAdminAction('infiniteCooldown')">No Cooldowns</button>
+        </div>
+    </div>
+
+    <script src="client.js"></script>
+</body>
+</html>
