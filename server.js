@@ -7,38 +7,33 @@ const HAND_REGISTRY = require('./shared/hands.js');
 
 const PORT = process.env.PORT || 3000;
 
-// Serve public static files
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/shared', express.static(path.join(__dirname, 'shared')));
 
-// Global Server States
 let players = {};
-let walls = [];       // Track builder walls: { id, ownerId, x, y, z, hp: 5 }
-let bullets = [];     // Track sniper projectiles: { id, ownerId, x, y, z, vx, vz, startX, startZ }
-let matchState = "LOBBY"; // LOBBY, MATCH
+let walls = [];       
+let bullets = [];     
+let matchState = "LOBBY"; 
 const ISLAND_RADIUS = 50; 
 
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // Future-proof layout initialized inside the primary memory model
     players[socket.id] = {
         id: socket.id,
         username: `Guest_${socket.id.substring(0, 4)}`,
-        x: 0, y: 5, z: 0,
-        ry: 0, // Rotation tracking along Y axis
-        rotationHistory: [], // Tracking spin velocity for easter egg physics
+        x: 0, y: 16, z: -80, 
+        ry: 0, 
+        rotationHistory: [], 
         equippedGlove: "Speedy",
         isAlive: false,
         isReady: false,
         cooldowns: { slap: 0, ability: 0 },
         diverTimer: null,
-        // Account updates hooks placeholders
         currency: 0,
         isAdmin: false 
     };
 
-    // Broadcast current arena environment to the newcomer
     socket.emit('init', { id: socket.id, players, walls, matchState, hands: HAND_REGISTRY });
 
     socket.on('player_ready', (readyStatus) => {
@@ -59,23 +54,19 @@ io.on('connection', (socket) => {
         let p = players[socket.id];
         if (!p) return;
 
-        // Process position and record historical rotation vectors over time frames
         p.x = data.x; p.y = data.y; p.z = data.z; p.ry = data.ry;
         
         const now = Date.now();
         p.rotationHistory.push({ angle: data.ry, time: now });
-        // Clean out history entries older than 150ms
         p.rotationHistory = p.rotationHistory.filter(h => now - h.time <= 150);
 
         io.emit('player_moved', { id: socket.id, x: p.x, y: p.y, z: p.z, ry: p.ry });
     });
 
-    // Chat Message Event Interceptor
     socket.on('send_chat', (msg) => {
         let p = players[socket.id];
         if (!p || typeof msg !== 'string' || msg.length > 50) return;
 
-        // Dormant Command Interceptor (Future Admin Abuse Expansion Hook)
         if (msg.startsWith('/') || msg.startsWith(';')) {
             processAdminCommand(socket.id, msg);
             return;
@@ -84,21 +75,18 @@ io.on('connection', (socket) => {
         io.emit('chat_received', { username: p.username, message: msg });
     });
 
-    // Core Combat: Regular Slap Logic
     socket.on('trigger_slap', () => {
         let attacker = players[socket.id];
         if (!attacker || attacker.cooldowns.slap > Date.now()) return;
 
         let gloveConfig = HAND_REGISTRY[attacker.equippedGlove];
-        attacker.cooldowns.slap = Date.now() + 400; // Animation lockout lock
+        attacker.cooldowns.slap = Date.now() + 400; 
 
         io.emit('slap_animated', { id: socket.id });
 
-        // Calculate custom spatial ranges based on glove modifiers
         let reach = (attacker.equippedGlove === "Extended") ? 8 : 4;
         let deadzone = (attacker.equippedGlove === "Extended") ? 2.5 : 0;
 
-        // Server authoritative distance and angle cross checks
         Object.keys(players).forEach(targetId => {
             if (targetId === socket.id) return;
             let target = players[targetId];
@@ -109,14 +97,11 @@ io.on('connection', (socket) => {
             let distance = Math.sqrt(dx*dx + dz*dz);
 
             if (distance >= deadzone && distance <= reach) {
-                // Wall verification gate
                 let wallInterfered = checkWallIntersection(attacker, target);
-                // Only Builder and Extended hands pass validation to deal wall damage
                 if (wallInterfered && !gloveConfig.wallPiercing) return;
 
-                // Hit Confirmed! Calculate Spinning Vector Checks
                 let isSpinning = calculateSpinVelocity(target);
-                let knockbackPower = isSpinning ? 95 : 15; // INSANE chaotic power if spinning
+                let knockbackPower = isSpinning ? 95 : 15; 
 
                 let angle = isSpinning ? Math.random() * Math.PI * 2 : Math.atan2(dz, dx);
                 
@@ -131,7 +116,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Core Combat: Ability Controls (E)
     socket.on('trigger_ability', (clickCoords) => {
         let p = players[socket.id];
         if (!p || matchState !== "MATCH" || p.cooldowns.ability > Date.now()) return;
@@ -162,7 +146,6 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
-        // Clear lingering asset queues linked to player
         walls = walls.filter(w => w.ownerId !== socket.id);
         delete players[socket.id];
         io.emit('player_disconnected', socket.id);
@@ -170,7 +153,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Helper: Calculate total degrees rotated in the last 150ms frame
 function calculateSpinVelocity(target) {
     if (target.rotationHistory.length < 2) return false;
     let minAngle = Infinity;
@@ -179,16 +161,13 @@ function calculateSpinVelocity(target) {
         if (h.angle < minAngle) minAngle = h.angle;
         if (h.angle > maxAngle) maxAngle = h.angle;
     });
-    // Converting radian delta into scale degrees
     let totalDelta = (maxAngle - minAngle) * (180 / Math.PI);
     return totalDelta >= 360;
 }
 
-// Helper: Line-to-Box wall intersecting check 
 function checkWallIntersection(p1, p2) {
     let interfered = false;
     walls.forEach(w => {
-        // Broad phase bounding check
         let midX = (p1.x + p2.x) / 2;
         let midZ = (p1.z + p2.z) / 2;
         let distToWall = Math.sqrt(Math.pow(w.x - midX, 2) + Math.pow(w.z - midZ, 2));
@@ -197,20 +176,16 @@ function checkWallIntersection(p1, p2) {
     return interfered;
 }
 
-// Builder Ability Handler
 function spawnBuilderWall(ownerId) {
     let p = players[ownerId];
-    // Distance parameter offsets wall exactly 2 lengths forward
     let spawnDistance = 4; 
     let targetX = p.x + Math.sin(p.ry) * spawnDistance;
     let targetY = p.y;
     let targetZ = p.z + Math.cos(p.ry) * spawnDistance;
 
-    // Check for existing walls sitting on coords
     walls.forEach(w => {
         let d = Math.sqrt(Math.pow(w.x - targetX, 2) + Math.pow(w.z - targetZ, 2));
         if (d < 2) {
-            // Snap forward or backward based on which is closer to target
             let checkForwardX = targetX + Math.sin(p.ry) * 2.1;
             let checkForwardZ = targetZ + Math.cos(p.ry) * 2.1;
             let checkBackX = targetX - Math.sin(p.ry) * 2.1;
@@ -231,7 +206,6 @@ function spawnBuilderWall(ownerId) {
         hp: 5
     };
 
-    // Manage strict Max 6 queue limit structure
     let ownerWalls = walls.filter(w => w.ownerId === ownerId);
     if (ownerWalls.length >= 6) {
         let oldestWallIndex = walls.findIndex(w => w.id === ownerWalls[0].id);
@@ -245,7 +219,6 @@ function spawnBuilderWall(ownerId) {
     io.emit('wall_spawned', newWall);
 }
 
-// Sniper Ability Projectile Vector Handler
 function spawnSniperBullet(ownerId) {
     let p = players[ownerId];
     let bulletSpeed = 1.2;
@@ -254,7 +227,7 @@ function spawnSniperBullet(ownerId) {
     let bullet = {
         id: bId,
         ownerId: ownerId,
-        x: p.x, y: p.y + 0.5, z: p.z, // Dynamic height assignment tracking
+        x: p.x, y: p.y + 0.5, z: p.z, 
         vx: Math.sin(p.ry) * bulletSpeed,
         vz: Math.cos(p.ry) * bulletSpeed,
         startX: p.x, startZ: p.z
@@ -263,10 +236,8 @@ function spawnSniperBullet(ownerId) {
     io.emit('bullet_spawned', bullet);
 }
 
-// Diver Jump Execution
 function executeDiverLaunch(ownerId) {
     io.emit('diver_launched', ownerId);
-    // Force a 7 second failure auto fall drop timeline tracker
     players[ownerId].diverTimer = setTimeout(() => {
         let p = players[ownerId];
         if (p && p.diverTimer) {
@@ -276,23 +247,18 @@ function executeDiverLaunch(ownerId) {
     }, 7000);
 }
 
-// Game Loop Tick: Server-Side Frame Processing (Projectiles & Out-of-Bounds Checks)
 setInterval(() => {
-    // Projectile Loop Engine
     for (let i = bullets.length - 1; i >= 0; i--) {
         let b = bullets[i];
         b.x += b.vx; b.z += b.vz;
 
         let traveled = Math.sqrt(Math.pow(b.x - b.startX, 2) + Math.pow(b.z - b.startZ, 2));
         let maxRange = ISLAND_RADIUS * 2 * 3.5;
-
         let destroyed = false;
 
-        // Despawn check when range limits clip
         if (traveled > maxRange) {
             destroyed = true;
         } else {
-            // Check wall collision matrix
             for (let j = walls.length - 1; j >= 0; j--) {
                 let w = walls[j];
                 let dist = Math.sqrt(Math.pow(w.x - b.x, 2) + Math.pow(w.z - b.z, 2));
@@ -318,14 +284,13 @@ setInterval(() => {
         }
     }
 
-    // Out-of-bounds map void elimination sweeps
     if (matchState === "MATCH") {
         let aliveCount = 0;
         Object.keys(players).forEach(id => {
             let p = players[id];
             if (!p.isAlive) return;
 
-            if (p.y < -15) { // Void depth limit check
+            if (p.y < -15) { 
                 p.isAlive = false;
                 io.emit('player_eliminated', id);
             } else {
@@ -363,21 +328,20 @@ function endMatchCycle() {
     Object.values(players).forEach(p => {
         if (p.isAlive) {
             winnerId = p.id;
-            p.currency += 15; // Give currency on win
+            p.currency += 15;
         }
         p.isAlive = false;
         p.isReady = false;
-        p.x = 0; p.y = 5; p.z = 0;
+        p.x = 0; p.y = 16; p.z = -80; 
     });
     walls = []; bullets = [];
     io.emit('match_ended', { winnerId, players });
 }
 
-// Dormant Command Router Container (Future Admin Update Interface)
 function processAdminCommand(callerId, fullCmd) {
-    console.log(`Admin parser caught execution attempt: ${callerId} typed ${fullCmd}`);
+    console.log(`Admin command registered: ${callerId} typed ${fullCmd}`);
 }
 
 http.listen(PORT, () => {
-    console.log(`Server executing safely on port: ${PORT}`);
+    console.log(`Server running smoothly on port: ${PORT}`);
 });
