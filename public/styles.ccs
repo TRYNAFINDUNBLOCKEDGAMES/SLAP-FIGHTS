@@ -1,0 +1,100 @@
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    font-family: 'Arial', sans-serif;
+    user-select: none;
+    background-color: #1a1a1a;
+}
+
+#canvas-container {
+    width: 100vw;
+    height: 100vh;
+    display: block;
+}
+
+.hud-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; 
+}
+
+.interactive {
+    pointer-events: auto; 
+}
+
+#chat-container {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 320px;
+    height: 220px;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+    transition: opacity 0.2s ease;
+}
+
+#chat-log {
+    flex-grow: 1;
+    overflow-y: auto;
+    color: #fff;
+    font-size: 14px;
+    margin-bottom: 5px;
+    padding: 5px;
+    word-break: break-all;
+}
+
+#chat-input {
+    width: 95%;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 5px;
+    border-radius: 3px;
+    outline: none;
+    display: none; 
+}
+
+#account-hud {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.6);
+    color: gold;
+    padding: 10px;
+    border-radius: 5px;
+    font-weight: bold;
+    border: 1px solid #ffd700;
+}
+
+#admin-panel {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(40, 0, 0, 0.85);
+    border: 2px solid #ff0000;
+    padding: 15px;
+    border-radius: 8px;
+    display: none; 
+    color: #fff;
+    box-shadow: 0 0 15px #ff0000;
+}
+
+.admin-btn {
+    background: #ff0000;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    margin: 5px;
+    cursor: pointer;
+    font-weight: bold;
+    border-radius: 3px;
+}
+.admin-btn:hover { background: #b30000; }
