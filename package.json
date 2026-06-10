@@ -1,1 +1,13 @@
-
+{
+  "name": "slap-game-3d",
+  "version": "1.0.0",
+  "description": "Battle it out with your hands!",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
