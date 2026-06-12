@@ -35,6 +35,7 @@ io.on('connection', (socket) => {
     };
 
     socket.emit('init', { id: socket.id, players, walls, matchState, hands: HAND_REGISTRY });
+    io.emit('player_joined', players[socket.id]);
 
     socket.on('player_ready', (readyStatus) => {
         if (players[socket.id]) {
@@ -60,12 +61,23 @@ io.on('connection', (socket) => {
         p.rotationHistory.push({ angle: data.ry, time: now });
         p.rotationHistory = p.rotationHistory.filter(h => now - h.time <= 150);
 
-        io.emit('player_moved', { id: socket.id, x: p.x, y: p.y, z: p.z, ry: p.ry });
+        socket.broadcast.emit('player_moved', { id: socket.id, x: p.x, y: p.y, z: p.z, ry: p.ry });
     });
 
     socket.on('send_chat', (msg) => {
         let p = players[socket.id];
         if (!p || typeof msg !== 'string' || msg.length > 50) return;
+
+        if (msg.startsWith('/name ')) {
+            let newName = msg.replace('/name ', '').trim();
+            if (newName.length > 0 && newName.length <= 14) {
+                let oldName = p.username;
+                p.username = newName;
+                io.emit('player_updated', p);
+                io.emit('chat_received', { username: "System", message: `${oldName} changed their name to ${newName}` });
+            }
+            return;
+        }
 
         if (msg.startsWith('/') || msg.startsWith(';')) {
             processAdminCommand(socket.id, msg);
