@@ -23,7 +23,6 @@ let yVelocity = 0;
 const GRAVITY = -0.015;
 let isGrounded = true;
 
-// Array to track the floating showcase models so we can spin them
 let showcaseHands = [];
 
 init3DWorld();
@@ -57,7 +56,7 @@ function init3DWorld() {
     lobbyGroup.position.set(0, 15, -80); 
 
     const floorGeo = new THREE.BoxGeometry(30, 0.2, 20);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333 }); // Darker sleek floor
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333 }); 
     const floor = new THREE.Mesh(floorGeo, floorMat);
     lobbyGroup.add(floor);
 
@@ -67,12 +66,10 @@ function init3DWorld() {
     carpet.position.set(0, 0.1, 0); 
     lobbyGroup.add(carpet);
 
-    // Dynamic Pad Creation & Floating Hand Showcases
     const handNames = ["Speedy", "Jumper", "Extended", "Diver", "Builder", "Sniper"];
     handNames.forEach((name, index) => {
         let padColor = getGloveColorHex(name);
         
-        // 1. Create the glowing floor pad
         let plateGeo = new THREE.CylinderGeometry(1.4, 1.4, 0.1, 16);
         let plateMat = new THREE.MeshStandardMaterial({ 
             color: padColor, 
@@ -85,13 +82,9 @@ function init3DWorld() {
         plate.userData = { isHandPlate: true, handName: name };
         lobbyGroup.add(plate);
 
-        // 2. Create a standalone standalone 3D hand model to float over the pad
         let showcaseHand = createDisplayHandMesh(name);
-        // Position it right above the floor pad
         showcaseHand.position.set(-11 + (index * 4.4), 1.5, -5);
         lobbyGroup.add(showcaseHand);
-        
-        // Save reference so we can spin it in our animation loop
         showcaseHands.push(showcaseHand);
     });
 
@@ -132,10 +125,8 @@ function init3DWorld() {
     });
 }
 
-// Helper to make a standalone floating hand mesh for showcase pads
 function createDisplayHandMesh(gloveName) {
     const displayGroup = new THREE.Group();
-    
     const handMatColor = getGloveColorHex(gloveName);
     const handMaterial = new THREE.MeshStandardMaterial({ 
         color: handMatColor, 
@@ -144,18 +135,15 @@ function createDisplayHandMesh(gloveName) {
         roughness: 0.3 
     });
 
-    // Palm base
     const palmGeo = new THREE.BoxGeometry(0.7, 0.25, 0.7);
     const palm = new THREE.Mesh(palmGeo, handMaterial);
     displayGroup.add(palm);
 
-    // Thumb
     const thumbGeo = new THREE.BoxGeometry(0.2, 0.16, 0.25);
     const thumb = new THREE.Mesh(thumbGeo, handMaterial);
     thumb.position.set(0.4, 0, 0.1);
     displayGroup.add(thumb);
 
-    // 4 Fingers
     for (let i = 0; i < 4; i++) {
         let fingerGeo = new THREE.BoxGeometry(0.13, 0.14, 0.35);
         let finger = new THREE.Mesh(fingerGeo, handMaterial);
@@ -163,7 +151,6 @@ function createDisplayHandMesh(gloveName) {
         displayGroup.add(finger);
     }
 
-    // Scale it up slightly so it looks awesome floating in the lobby
     displayGroup.scale.set(1.3, 1.3, 1.3);
     return displayGroup;
 }
@@ -233,15 +220,14 @@ function createPlayerCharacterMesh(gloveName) {
     return group;
 }
 
-// 🎨 DEFINED THEME COLORS FOR EVERY HAND TYPE
 function getGloveColorHex(name) {
     const colors = { 
-        Speedy: 0x00f3ff,   // Bright Cyber Cyan
-        Jumper: 0xffd700,   // Deep Gold Yellow
-        Extended: 0xff007f, // Neon Hot Pink
-        Diver: 0x10b981,    // Deep Emerald Green
-        Builder: 0xf97316,  // Safety Industrial Orange
-        Sniper: 0xef4444    // Crimson Combat Red
+        Speedy: 0x00f3ff,   
+        Jumper: 0xffd700,   
+        Extended: 0xff007f, 
+        Diver: 0x10b981,    
+        Builder: 0xf97316,  
+        Sniper: 0xef4444    
     };
     return colors[name] || 0xffffff;
 }
@@ -260,7 +246,6 @@ function animateLoop() {
     processLocalMovement();
     updateCameraPosition();
     
-    // Spin and hover the display hands in the lobby so they look lively!
     let time = Date.now() * 0.002;
     showcaseHands.forEach((hand, idx) => {
         hand.rotation.y += 0.015;
@@ -283,21 +268,35 @@ function processLocalMovement() {
     let sideX = Math.sin(cameraAngleY + Math.PI / 2);
     let sideZ = Math.cos(cameraAngleY + Math.PI / 2);
 
-    let moveX = 0;
-    let moveZ = 0;
+    let nextX = mesh.position.x;
+    let nextZ = mesh.position.z;
 
-    if (keys.w) { moveX += forwardX; moveZ += forwardZ; }
-    if (keys.s) { moveX -= forwardX; moveZ -= forwardZ; }
-    if (keys.a) { moveX += sideX; moveZ += sideZ; }
-    if (keys.d) { moveX -= sideX; moveZ -= sideZ; }
+    if (keys.w) { nextX += forwardX * baseSpeed; nextZ += forwardZ * baseSpeed; }
+    if (keys.s) { nextX -= forwardX * baseSpeed; nextZ -= forwardZ * baseSpeed; }
+    if (keys.a) { nextX += sideX * baseSpeed; nextZ += sideZ * baseSpeed; }
+    if (keys.d) { nextX -= sideX * baseSpeed; nextZ -= sideZ * baseSpeed; }
 
-    if (moveX !== 0 || moveZ !== 0) {
-        let length = Math.sqrt(moveX * moveX + moveZ * moveZ);
-        mesh.position.x += (moveX / length) * baseSpeed;
-        mesh.position.z += (moveZ / length) * baseSpeed;
-        if (!shiftLockActive) {
-            mesh.rotation.y = Math.atan2(moveX, moveZ);
+    // 🛑 LOCAL CLIENT WALL COLLISION FORCE
+    // Loop through placed walls to check if our next expected step hits a barrier
+    Object.values(wallMeshes).forEach(wMesh => {
+        let dx = nextX - wMesh.position.x;
+        let dz = nextZ - wMesh.position.z;
+        let distance = Math.sqrt(dx * dx + dz * dz);
+
+        // If walking into a wall, cancel horizontal speed step by pushing back out
+        if (distance < 2.3) {
+            let angle = Math.atan2(dz, dx);
+            nextX = wMesh.position.x + Math.sin(angle) * 2.3;
+            nextZ = wMesh.position.z + Math.cos(angle) * 2.3;
         }
+    });
+
+    if (nextX !== mesh.position.x || nextZ !== mesh.position.z) {
+        if (!shiftLockActive) {
+            mesh.rotation.y = Math.atan2(nextX - mesh.position.x, nextZ - mesh.position.z);
+        }
+        mesh.position.x = nextX;
+        mesh.position.z = nextZ;
     }
 
     if (shiftLockActive) {
@@ -322,7 +321,7 @@ function processLocalMovement() {
         let handNames = ["Speedy", "Jumper", "Extended", "Diver", "Builder", "Sniper"];
         handNames.forEach((name, index) => {
             let pX = -11 + (index * 4.4);
-            let pZ = -5; // Aligned directly with pad coordinates
+            let pZ = -5; 
             let dist = Math.sqrt(Math.pow(localX - pX, 2) + Math.pow(localZ - pZ, 2));
             if (dist < 1.4 && lp.equippedGlove !== name) {
                 socket.emit('select_glove', name);
@@ -339,7 +338,7 @@ function processLocalMovement() {
     Object.values(wallMeshes).forEach(wMesh => {
         let dx = Math.abs(mesh.position.x - wMesh.position.x);
         let dz = Math.abs(mesh.position.z - wMesh.position.z);
-        if (dx < 2.2 && dz < 2.2) {
+        if (dx < 2.3 && dz < 2.3) {
             let topOfWall = wMesh.position.y + 4;
             if (mesh.position.y >= topOfWall - 0.5 && yVelocity <= 0) {
                 groundHeight = topOfWall;
