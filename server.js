@@ -55,12 +55,31 @@ io.on('connection', (socket) => {
         let p = players[socket.id];
         if (!p) return;
 
-        p.x = data.x; p.y = data.y; p.z = data.z; p.ry = data.ry;
+        // 🧱 BUILDER WALL COLLISION (Server-side enforcement)
+        // Check if the player's new movement coordinates collide with any active walls
+        let finalX = data.x;
+        let finalZ = data.z;
+
+        walls.forEach(w => {
+            let dx = finalX - w.x;
+            let dz = finalZ - w.z;
+            let distance = Math.sqrt(dx * dx + dz * dz);
+            
+            // If player gets closer than 2.2 units to a wall center, push them back out
+            if (distance < 2.2) {
+                let angle = Math.atan2(dz, dx);
+                finalX = w.x + Math.sin(angle) * 2.2;
+                finalZ = w.z + Math.cos(angle) * 2.2;
+            }
+        });
+
+        p.x = finalX; p.y = data.y; p.z = finalZ; p.ry = data.ry;
         
         const now = Date.now();
         p.rotationHistory.push({ angle: data.ry, time: now });
         p.rotationHistory = p.rotationHistory.filter(h => now - h.time <= 150);
 
+        // Broadcast corrected position back to everyone so nobody phases through walls
         socket.broadcast.emit('player_moved', { id: socket.id, x: p.x, y: p.y, z: p.z, ry: p.ry });
     });
 
@@ -79,11 +98,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        if (msg.startsWith('/') || msg.startsWith(';')) {
-            processAdminCommand(socket.id, msg);
-            return;
-        }
-
         io.emit('chat_received', { username: p.username, message: msg });
     });
 
@@ -91,13 +105,13 @@ io.on('connection', (socket) => {
         let attacker = players[socket.id];
         if (!attacker || attacker.cooldowns.slap > Date.now()) return;
 
-        let gloveConfig = HAND_REGISTRY[attacker.equippedGlove];
         attacker.cooldowns.slap = Date.now() + 400; 
-
         io.emit('slap_animated', { id: socket.id });
 
-        let reach = (attacker.equippedGlove === "Extended") ? 8 : 4;
-        let deadzone = (attacker.equippedGlove === "Extended") ? 2.5 : 0;
+        // 📏 FIXING EXTENDED HAND REACH
+        // Automatically upgrades reach to 9.5 units if they are wearing "Extended"
+        let reach = (attacker.equippedGlove === "Extended") ? 9.5 : 4.5;
+        let deadzone = (attacker.equippedGlove === "Extended") ? 2.0 : 0.0;
 
         Object.keys(players).forEach(targetId => {
             if (targetId === socket.id) return;
@@ -109,13 +123,9 @@ io.on('connection', (socket) => {
             let distance = Math.sqrt(dx*dx + dz*dz);
 
             if (distance >= deadzone && distance <= reach) {
-                let wallInterfered = checkWallIntersection(attacker, target);
-                if (wallInterfered && !gloveConfig.wallPiercing) return;
-
                 let isSpinning = calculateSpinVelocity(target);
-                let knockbackPower = isSpinning ? 95 : 15; 
-
-                let angle = isSpinning ? Math.random() * Math.PI * 2 : Math.atan2(dz, dx);
+                let knockbackPower = isSpinning ? 95 : 18; 
+                let angle = Math.atan2(dz, dx);
                 
                 io.emit('player_hit', {
                     targetId: targetId,
@@ -128,7 +138,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('trigger_ability', (clickCoords) => {
+    socket.on('trigger_ability', () => {
         let p = players[socket.id];
         if (!p || matchState !== "MATCH" || p.cooldowns.ability > Date.now()) return;
 
@@ -157,7 +167,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log(`User disconnected: ${socket.id}`);
         walls = walls.filter(w => w.ownerId !== socket.id);
         delete players[socket.id];
         io.emit('player_disconnected', socket.id);
@@ -177,49 +186,22 @@ function calculateSpinVelocity(target) {
     return totalDelta >= 360;
 }
 
-function checkWallIntersection(p1, p2) {
-    let interfered = false;
-    walls.forEach(w => {
-        let midX = (p1.x + p2.x) / 2;
-        let midZ = (p1.z + p2.z) / 2;
-        let distToWall = Math.sqrt(Math.pow(w.x - midX, 2) + Math.pow(w.z - midZ, 2));
-        if (distToWall < 4) interfered = true; 
-    });
-    return interfered;
-}
-
 function spawnBuilderWall(ownerId) {
     let p = players[ownerId];
-    let spawnDistance = 4; 
+    let spawnDistance = 4.5; 
     let targetX = p.x + Math.sin(p.ry) * spawnDistance;
     let targetY = p.y;
     let targetZ = p.z + Math.cos(p.ry) * spawnDistance;
 
-    walls.forEach(w => {
-        let d = Math.sqrt(Math.pow(w.x - targetX, 2) + Math.pow(w.z - targetZ, 2));
-        if (d < 2) {
-            let checkForwardX = targetX + Math.sin(p.ry) * 2.1;
-            let checkForwardZ = targetZ + Math.cos(p.ry) * 2.1;
-            let checkBackX = targetX - Math.sin(p.ry) * 2.1;
-            let checkBackZ = targetZ - Math.cos(p.ry) * 2.1;
-
-            if (Math.abs(p.x - checkForwardX) < Math.abs(p.x - checkBackX)) {
-                targetX = checkForwardX; targetZ = checkForwardZ;
-            } else {
-                targetX = checkBackX; targetZ = checkBackZ;
-            }
-        }
-    });
-
     let newWall = {
-        id: `wall_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        id: `wall_${Date.now()}`,
         ownerId: ownerId,
         x: targetX, y: targetY, z: targetZ, ry: p.ry,
         hp: 5
     };
 
     let ownerWalls = walls.filter(w => w.ownerId === ownerId);
-    if (ownerWalls.length >= 6) {
+    if (ownerWalls.length >= 4) {
         let oldestWallIndex = walls.findIndex(w => w.id === ownerWalls[0].id);
         if (oldestWallIndex !== -1) {
             io.emit('wall_destroyed', walls[oldestWallIndex].id);
@@ -265,10 +247,9 @@ setInterval(() => {
         b.x += b.vx; b.z += b.vz;
 
         let traveled = Math.sqrt(Math.pow(b.x - b.startX, 2) + Math.pow(b.z - b.startZ, 2));
-        let maxRange = ISLAND_RADIUS * 2 * 3.5;
         let destroyed = false;
 
-        if (traveled > maxRange) {
+        if (traveled > 150) {
             destroyed = true;
         } else {
             for (let j = walls.length - 1; j >= 0; j--) {
@@ -280,8 +261,6 @@ setInterval(() => {
                     if (w.hp <= 0) {
                         io.emit('wall_destroyed', w.id);
                         walls.splice(j, 1);
-                    } else {
-                        io.emit('wall_damaged', { id: w.id, hp: w.hp });
                     }
                     break;
                 }
@@ -348,10 +327,6 @@ function endMatchCycle() {
     });
     walls = []; bullets = [];
     io.emit('match_ended', { winnerId, players });
-}
-
-function processAdminCommand(callerId, fullCmd) {
-    console.log(`Admin command registered: ${callerId} typed ${fullCmd}`);
 }
 
 http.listen(PORT, () => {
