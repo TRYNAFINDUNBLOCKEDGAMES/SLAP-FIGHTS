@@ -23,6 +23,9 @@ let yVelocity = 0;
 const GRAVITY = -0.015;
 let isGrounded = true;
 
+// Array to track the floating showcase models so we can spin them
+let showcaseHands = [];
+
 init3DWorld();
 animateLoop();
 setupNetworkEvents();
@@ -54,27 +57,45 @@ function init3DWorld() {
     lobbyGroup.position.set(0, 15, -80); 
 
     const floorGeo = new THREE.BoxGeometry(30, 0.2, 20);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333 }); // Darker sleek floor
     const floor = new THREE.Mesh(floorGeo, floorMat);
     lobbyGroup.add(floor);
 
     const carpetGeo = new THREE.BoxGeometry(8, 0.05, 20);
-    const carpetMat = new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.9 }); 
+    const carpetMat = new THREE.MeshStandardMaterial({ color: 0x990000, roughness: 0.9 }); 
     const carpet = new THREE.Mesh(carpetGeo, carpetMat);
     carpet.position.set(0, 0.1, 0); 
     lobbyGroup.add(carpet);
 
+    // Dynamic Pad Creation & Floating Hand Showcases
     const handNames = ["Speedy", "Jumper", "Extended", "Diver", "Builder", "Sniper"];
     handNames.forEach((name, index) => {
-        let plateGeo = new THREE.CylinderGeometry(1.2, 1.2, 0.1, 16);
-        let plateMat = new THREE.MeshStandardMaterial({ color: getGloveColorHex(name), emissive: getGloveColorHex(name), emissiveIntensity: 0.3 });
+        let padColor = getGloveColorHex(name);
+        
+        // 1. Create the glowing floor pad
+        let plateGeo = new THREE.CylinderGeometry(1.4, 1.4, 0.1, 16);
+        let plateMat = new THREE.MeshStandardMaterial({ 
+            color: padColor, 
+            emissive: padColor, 
+            emissiveIntensity: 0.6,
+            roughness: 0.2
+        });
         let plate = new THREE.Mesh(plateGeo, plateMat);
-        plate.position.set(-11 + (index * 4.4), 0.1, -6);
+        plate.position.set(-11 + (index * 4.4), 0.1, -5);
         plate.userData = { isHandPlate: true, handName: name };
         lobbyGroup.add(plate);
+
+        // 2. Create a standalone standalone 3D hand model to float over the pad
+        let showcaseHand = createDisplayHandMesh(name);
+        // Position it right above the floor pad
+        showcaseHand.position.set(-11 + (index * 4.4), 1.5, -5);
+        lobbyGroup.add(showcaseHand);
+        
+        // Save reference so we can spin it in our animation loop
+        showcaseHands.push(showcaseHand);
     });
 
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
     
     const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 8, 0.5), wallMat);
     backWall.position.set(0, 4, -10);
@@ -111,23 +132,59 @@ function init3DWorld() {
     });
 }
 
+// Helper to make a standalone floating hand mesh for showcase pads
+function createDisplayHandMesh(gloveName) {
+    const displayGroup = new THREE.Group();
+    
+    const handMatColor = getGloveColorHex(gloveName);
+    const handMaterial = new THREE.MeshStandardMaterial({ 
+        color: handMatColor, 
+        emissive: handMatColor,
+        emissiveIntensity: 0.15,
+        roughness: 0.3 
+    });
+
+    // Palm base
+    const palmGeo = new THREE.BoxGeometry(0.7, 0.25, 0.7);
+    const palm = new THREE.Mesh(palmGeo, handMaterial);
+    displayGroup.add(palm);
+
+    // Thumb
+    const thumbGeo = new THREE.BoxGeometry(0.2, 0.16, 0.25);
+    const thumb = new THREE.Mesh(thumbGeo, handMaterial);
+    thumb.position.set(0.4, 0, 0.1);
+    displayGroup.add(thumb);
+
+    // 4 Fingers
+    for (let i = 0; i < 4; i++) {
+        let fingerGeo = new THREE.BoxGeometry(0.13, 0.14, 0.35);
+        let finger = new THREE.Mesh(fingerGeo, handMaterial);
+        finger.position.set(-0.25 + (i * 0.17), 0, -0.45);
+        displayGroup.add(finger);
+    }
+
+    // Scale it up slightly so it looks awesome floating in the lobby
+    displayGroup.scale.set(1.3, 1.3, 1.3);
+    return displayGroup;
+}
+
 function createPlayerCharacterMesh(gloveName) {
     const group = new THREE.Group();
 
     const bodyGeo = new THREE.CylinderGeometry(0.6, 0.6, 1.2, 8);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0066ff, roughness: 0.5 }); 
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5 }); 
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.position.y = 1.2;
     group.add(body);
 
     const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
-    const headMat = new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.5 }); 
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 }); 
     const head = new THREE.Mesh(headGeo, headMat);
     head.position.y = 2.1;
     group.add(head);
 
     const legGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.6, 8);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x00aa00, roughness: 0.5 }); 
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.5 }); 
     
     const leftLeg = new THREE.Mesh(legGeo, legMat);
     leftLeg.position.set(-0.3, 0.3, 0);
@@ -142,7 +199,7 @@ function createPlayerCharacterMesh(gloveName) {
     
     const armGeo = new THREE.CylinderGeometry(0.15, 0.15, 1.0, 8);
     armGeo.translate(0, -0.5, 0); 
-    const armMat = new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.5 }); 
+    const armMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 }); 
     const arm = new THREE.Mesh(armGeo, armMat);
     arm.rotation.x = -Math.PI / 2; 
     shoulderPivot.add(arm);
@@ -176,8 +233,16 @@ function createPlayerCharacterMesh(gloveName) {
     return group;
 }
 
+// 🎨 DEFINED THEME COLORS FOR EVERY HAND TYPE
 function getGloveColorHex(name) {
-    const colors = { Speedy: 0x00ffcc, Jumper: 0xffcc00, Extended: 0xff00ff, Diver: 0x33cc33, Builder: 0xff6600, Sniper: 0xcc0000 };
+    const colors = { 
+        Speedy: 0x00f3ff,   // Bright Cyber Cyan
+        Jumper: 0xffd700,   // Deep Gold Yellow
+        Extended: 0xff007f, // Neon Hot Pink
+        Diver: 0x10b981,    // Deep Emerald Green
+        Builder: 0xf97316,  // Safety Industrial Orange
+        Sniper: 0xef4444    // Crimson Combat Red
+    };
     return colors[name] || 0xffffff;
 }
 
@@ -194,6 +259,14 @@ function animateLoop() {
     requestAnimationFrame(animateLoop);
     processLocalMovement();
     updateCameraPosition();
+    
+    // Spin and hover the display hands in the lobby so they look lively!
+    let time = Date.now() * 0.002;
+    showcaseHands.forEach((hand, idx) => {
+        hand.rotation.y += 0.015;
+        hand.position.y = 1.4 + Math.sin(time + idx) * 0.12;
+    });
+
     renderer.render(scene, camera);
 }
 
@@ -249,7 +322,7 @@ function processLocalMovement() {
         let handNames = ["Speedy", "Jumper", "Extended", "Diver", "Builder", "Sniper"];
         handNames.forEach((name, index) => {
             let pX = -11 + (index * 4.4);
-            let pZ = -6;
+            let pZ = -5; // Aligned directly with pad coordinates
             let dist = Math.sqrt(Math.pow(localX - pX, 2) + Math.pow(localZ - pZ, 2));
             if (dist < 1.4 && lp.equippedGlove !== name) {
                 socket.emit('select_glove', name);
